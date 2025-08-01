@@ -7,7 +7,7 @@ following Clean Architecture and SOLID principles.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Tuple, Optional
-import numpy as np
+# import numpy as np  # TODO: Uncomment when numpy is installed
 from ..models.audio import AudioChunkModel, ProcessingResultModel
 
 

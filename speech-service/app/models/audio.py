@@ -6,7 +6,7 @@ following Clean Architecture principles with strict type validation.
 """
 
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import uuid
 from datetime import datetime
 
@@ -66,27 +66,28 @@ class AudioChunkModel(BaseModel):
         le=2
     )
     
-    @validator('session_id')
+    @field_validator('session_id')
+    @classmethod
     def validate_session_id(cls, v):
         """Validate session_id format."""
         if not v or not isinstance(v, str):
             raise ValueError("session_id must be a non-empty string")
         return v
     
-    @validator('data')
+    @field_validator('data')
+    @classmethod
     def validate_audio_data(cls, v):
         """Validate audio data is not empty."""
         if not v or len(v) == 0:
             raise ValueError("Audio data cannot be empty")
         return v
     
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             bytes: lambda v: len(v),  # Don't serialize raw bytes in JSON
             datetime: lambda v: v.isoformat()
-        }
-        schema_extra = {
+        },
+        json_schema_extra={
             "example": {
                 "session_id": "ws_session_12345",
                 "chunk_id": 0,
@@ -96,6 +97,7 @@ class AudioChunkModel(BaseModel):
                 "channels": 1
             }
         }
+    )
 
 
 class ProcessingResultModel(BaseModel):
@@ -133,7 +135,7 @@ class ProcessingResultModel(BaseModel):
     component: str = Field(
         ...,
         description="Name of the processing component",
-        regex=r"^(vad|asr|diarization)$"
+        pattern=r"^(vad|asr|diarization)$"
     )
     
     result: Dict[str, Any] = Field(
@@ -162,10 +164,13 @@ class ProcessingResultModel(BaseModel):
         description="Error message if processing failed"
     )
     
-    @validator('result')
-    def validate_result_structure(cls, v, values):
+    @field_validator('result')
+    @classmethod
+    def validate_result_structure(cls, v, info):
         """Validate result structure based on component type."""
-        component = values.get('component')
+        if info.data is None:
+            return v
+        component = info.data.get('component')
         
         if component == 'vad':
             required_fields = {'is_speech', 'confidence'}
@@ -184,12 +189,11 @@ class ProcessingResultModel(BaseModel):
         
         return v
     
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat()
-        }
-        schema_extra = {
+        },
+        json_schema_extra={
             "example": {
                 "session_id": "ws_session_12345",
                 "chunk_id": 0,
@@ -205,6 +209,7 @@ class ProcessingResultModel(BaseModel):
                 "error": None
             }
         }
+    )
 
 
 class WebSocketResponseModel(BaseModel):
@@ -265,12 +270,11 @@ class WebSocketResponseModel(BaseModel):
         description="UTC timestamp when response was created"
     )
     
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat()
-        }
-        schema_extra = {
+        },
+        json_schema_extra={
             "example": {
                 "session_id": "ws_session_12345",
                 "chunk_id": 0,
@@ -295,3 +299,4 @@ class WebSocketResponseModel(BaseModel):
                 "timestamp": "2023-12-01T12:00:01Z"
             }
         }
+    )

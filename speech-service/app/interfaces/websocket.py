@@ -6,7 +6,7 @@ following Clean Architecture principles.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from fastapi import WebSocket
 
 
@@ -141,7 +141,7 @@ class IWebSocketManager(ABC):
         pass
     
     @abstractmethod
-    async def get_active_sessions(self) -> list[str]:
+    async def get_active_sessions(self) -> List[str]:
         """
         Get list of all active session IDs.
         
