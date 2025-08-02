@@ -391,7 +391,7 @@ class MockDiarizationService(IDiarizationService):
                 "total_speaking_time": total_time,
                 "segment_count": len(speaker_segments),
                 "average_segment_duration": total_time / len(speaker_segments),
-                "speaking_percentage": (total_time / duration) * 100
+                "speaking_percentage": (total_time / duration) * 100 if duration > 0 else 0.0
             }
         
         self.logger.debug(
