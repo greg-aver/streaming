@@ -37,20 +37,21 @@ class Container(containers.DeclarativeContainer):
     )
     
     # Services - will be implemented in next step
-    # vad_service = providers.Factory(
-    #     providers.Factory(VADService),
-    #     config=config.provided.vad
-    # )
+    # Services - Mock implementations for testing
+    vad_service = providers.Factory(
+        lambda config: None,  # Placeholder, will be replaced in tests
+        config=config.provided.vad
+    )
     
-    # asr_service = providers.Factory(
-    #     providers.Factory(ASRService),
-    #     config=config.provided.asr
-    # )
+    asr_service = providers.Factory(
+        lambda config: None,  # Placeholder, will be replaced in tests
+        config=config.provided.asr
+    )
     
-    # diarization_service = providers.Factory(
-    #     providers.Factory(DiarizationService),
-    #     config=config.provided.diarization
-    # )
+    diarization_service = providers.Factory(
+        lambda config: None,  # Placeholder, will be replaced in tests
+        config=config.provided.diarization
+    )
     
     # Repositories - will be implemented
     # result_repository = providers.Singleton(
@@ -118,7 +119,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     core = providers.DependenciesContainer()
     
     # Application lifecycle management
-    @providers.singleton
+    @providers.Factory
     async def create_app():
         """Create and configure the FastAPI application."""
         from fastapi import FastAPI
@@ -145,7 +146,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         
         return app
     
-    @providers.singleton
+    @providers.Factory
     async def setup_logging():
         """Configure structured logging."""
         import logging.config
