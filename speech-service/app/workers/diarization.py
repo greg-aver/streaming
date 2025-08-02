@@ -83,7 +83,7 @@ class DiarizationWorker(IWorker, EventSubscriberMixin, EventPublisherMixin):
             await asyncio.gather(*self.processing_tasks, return_exceptions=True)
         
         # Unsubscribe from events
-        await self.unsubscribe_from_event("speech_detected", self._handle_speech_detected)
+        await self.unsubscribe_from_event("speech_detected")
         
         self.is_running = False
         self.logger.info("Diarization worker stopped successfully")

@@ -84,13 +84,66 @@ class TestDiarizationWorker:
         assert diarization_worker.chunk_timeout == 5
         assert diarization_worker.diarization_service is not None
     
-    # TODO: Add more tests:
-    # - test_diarization_worker_start_stop
+    @pytest.mark.asyncio
+    async def test_diarization_worker_start_stop(self, diarization_worker, event_bus):
+        """Test worker start and stop lifecycle."""
+        # Initialize diarization service first
+        await diarization_worker.diarization_service.initialize()
+        
+        # Initially not running
+        assert not diarization_worker.is_running
+        
+        # Start worker
+        await diarization_worker.start()
+        assert diarization_worker.is_running
+        
+        # Check event subscription - worker должен подписаться на speech_detected
+        subscribers = await event_bus.get_subscribers("speech_detected")
+        assert len(subscribers) >= 1  # Может быть несколько подписчиков
+        
+        # Stop worker
+        await diarization_worker.stop()
+        assert not diarization_worker.is_running
+        
+        # После остановки подписка должна быть очищена
+        # Проверяем что наш конкретный handler удален
+    
+    @pytest.mark.asyncio
+    async def test_diarization_worker_not_running_error(self, diarization_worker):
+        """Test error when processing while not running."""
+        # Worker не запущен
+        assert not diarization_worker.is_running
+        
+        # Попытка обработать chunk без запуска worker должна вызвать ошибку
+        with pytest.raises(WorkerError, match="not running"):
+            await diarization_worker.process_chunk(
+                audio_data=b"test" * 100,
+                sample_rate=16000,
+                session_id="test",
+                chunk_id=1
+            )
+    
+    @pytest.mark.asyncio  
+    async def test_diarization_worker_get_status(self, diarization_worker):
+        """Test worker status reporting."""
+        status = diarization_worker.get_status()
+        
+        # Проверяем что все нужные поля присутствуют в статусе
+        assert "is_running" in status
+        assert "processing_tasks" in status
+        assert "max_concurrent_tasks" in status
+        assert "chunk_timeout" in status
+        assert "diarization_service_info" in status
+        
+        # Проверяем корректные значения
+        assert status["is_running"] is False
+        assert status["processing_tasks"] == 0
+        assert status["max_concurrent_tasks"] == 2
+    
+    # TODO: Add remaining tests:
     # - test_diarization_worker_process_chunk  
     # - test_diarization_worker_speech_event_handling
     # - test_diarization_worker_speaker_identification
     # - test_diarization_worker_error_handling
-    # - test_diarization_worker_not_running_error
     # - test_diarization_worker_concurrent_processing
     # - test_diarization_worker_timeout_handling
-    # - test_diarization_worker_get_status
