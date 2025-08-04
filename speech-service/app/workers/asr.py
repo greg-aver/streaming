@@ -189,14 +189,15 @@ class ASRWorker(IWorker):
         chunk_data = event.data
         
         try:
-            # Extract audio data from the processing result
-            result_data = chunk_data.get("result", {})
-            audio_data = result_data.get("audio_data")
-            sample_rate = result_data.get("sample_rate", 16000)
+            # Extract audio data from the event (following old format)
+            audio_data = chunk_data.get("data")  # Primary format from old ASRWorker
+            sample_rate = chunk_data.get("sample_rate", 16000)
             
             if not audio_data:
-                # Fallback: try to get from chunk_data directly
-                audio_data = chunk_data.get("audio_data")
+                # Fallback: try to get from result (new format)
+                result_data = chunk_data.get("result", {})
+                audio_data = result_data.get("audio_data")
+                sample_rate = result_data.get("sample_rate", 16000)
             
             if not audio_data:
                 raise ValueError("No audio data found in speech_detected event")
@@ -224,20 +225,27 @@ class ASRWorker(IWorker):
                 session_id=session_id,
                 chunk_id=chunk_id,
                 component="asr",
-                result=result.model_dump(),
+                result=result if isinstance(result, dict) else result.model_dump(),
                 processing_time_ms=processing_time,
                 success=True
             )
             
             # Publish results
-            await self.event_bus.publish("asr_completed", processing_result.model_dump())
+            from ..interfaces.events import Event
+            result_event = Event(
+                name="asr_completed",
+                data=processing_result.model_dump(),
+                source="asr_worker",
+                correlation_id=event.correlation_id
+            )
+            await self.event_bus.publish(result_event)
             
             self.logger.debug(
                 "Speech chunk processed successfully",
                 session_id=session_id,
                 chunk_id=chunk_id,
                 processing_time_ms=processing_time,
-                transcription=result.text[:100] + "..." if len(result.text) > 100 else result.text
+                transcription=result.get("text", "")[:100] + "..." if len(result.get("text", "")) > 100 else result.get("text", "")
             )
             
         except asyncio.TimeoutError:
@@ -270,19 +278,32 @@ class ASRWorker(IWorker):
             processing_time_ms=processing_time
         )
         
-        # Create error result
+        # Create error result with required ASR fields
         error_result = ProcessingResultModel(
             session_id=chunk_data.get("session_id", "unknown"),
             chunk_id=chunk_data.get("chunk_id", -1),
             component="asr",
-            result={"error": error_message},
+            result={
+                "text": "",
+                "confidence": 0.0,
+                "segments": [],
+                "language": "unknown",
+                "error": error_message
+            },
             processing_time_ms=processing_time,
             success=False
         )
         
         # Publish error result
         try:
-            await self.event_bus.publish("asr_completed", error_result.model_dump())
+            from ..interfaces.events import Event
+            error_event = Event(
+                name="asr_completed",
+                data=error_result.model_dump(),
+                source="asr_worker",
+                correlation_id=None  # No correlation_id available in error context
+            )
+            await self.event_bus.publish(error_event)
         except Exception as publish_error:
             self.logger.error(
                 "Failed to publish error result",
@@ -298,7 +319,105 @@ class ASRWorker(IWorker):
         except Exception:
             pass  # Ignore cleanup errors during error handling
     
-    async def get_status(self) -> Dict[str, Any]:
+    async def process_chunk(self, audio_data: bytes, sample_rate: int, session_id: str, chunk_id: int) -> ProcessingResultModel:
+        """
+        Process speech audio and return transcription result.
+        
+        Senior approach: Compatibility method для интерфейса IWorker
+        
+        Args:
+            audio_data: Raw audio bytes containing speech
+            sample_rate: Audio sample rate
+            session_id: Session identifier
+            chunk_id: Chunk identifier
+            
+        Returns:
+            Processing result with transcription data
+            
+        Raises:
+            WorkerError: If processing fails
+        """
+        if not self.is_running:
+            raise WorkerError("ASR worker is not running")
+        
+        start_time = time.time()
+        
+        try:
+            # Run ASR transcription
+            result = await asyncio.wait_for(
+                self.asr_service.transcribe(audio_data, sample_rate),
+                timeout=self.chunk_timeout
+            )
+            
+            processing_time_ms = (time.time() - start_time) * 1000
+            
+            # Create processing result
+            processing_result = ProcessingResultModel(
+                session_id=session_id,
+                chunk_id=chunk_id,
+                component="asr",
+                result=result if isinstance(result, dict) else result.model_dump(),
+                processing_time_ms=processing_time_ms,
+                success=True
+            )
+            
+            self.logger.debug(
+                "ASR processing completed",
+                session_id=session_id,
+                chunk_id=chunk_id,
+                text_length=len(result.get("text", "")),
+                confidence=result.get("confidence", 0.0),
+                processing_time_ms=processing_time_ms
+            )
+            
+            return processing_result
+            
+        except asyncio.TimeoutError:
+            processing_time_ms = (time.time() - start_time) * 1000
+            await self._handle_processing_error(
+                {"session_id": session_id, "chunk_id": chunk_id}, 
+                "Processing timeout", 
+                processing_time_ms
+            )
+            # Return error result
+            return ProcessingResultModel(
+                session_id=session_id,
+                chunk_id=chunk_id,
+                component="asr",
+                result={
+                    "text": "",
+                    "confidence": 0.0,
+                    "segments": [],
+                    "language": "unknown",
+                    "error": "Processing timeout"
+                },
+                processing_time_ms=processing_time_ms,
+                success=False
+            )
+        except Exception as e:
+            processing_time_ms = (time.time() - start_time) * 1000
+            await self._handle_processing_error(
+                {"session_id": session_id, "chunk_id": chunk_id}, 
+                str(e), 
+                processing_time_ms
+            )
+            # Return error result
+            return ProcessingResultModel(
+                session_id=session_id,
+                chunk_id=chunk_id,
+                component="asr",
+                result={
+                    "text": "",
+                    "confidence": 0.0,
+                    "segments": [],
+                    "language": "unknown",
+                    "error": str(e)
+                },
+                processing_time_ms=processing_time_ms,
+                success=False
+            )
+
+    def get_status(self) -> Dict[str, Any]:
         """
         Get current worker status.
         
@@ -307,8 +426,11 @@ class ASRWorker(IWorker):
         """
         return {
             "is_running": self.is_running,
-            "active_tasks": len(self.processing_tasks),
+            "processing_tasks": len(self.processing_tasks),
             "max_concurrent_tasks": self.max_concurrent_tasks,
             "chunk_timeout": self.chunk_timeout,
-            "service_initialized": hasattr(self.asr_service, '_initialized') and self.asr_service._initialized
+            "asr_service_info": {
+                "type": type(self.asr_service).__name__,
+                "initialized": hasattr(self.asr_service, 'is_initialized') and self.asr_service.is_initialized
+            }
         }

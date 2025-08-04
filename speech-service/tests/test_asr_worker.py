@@ -55,24 +55,15 @@ class TestASRWorker:
     
     @pytest.fixture
     def asr_worker(self, event_bus, mock_asr_service, processing_config):
-        """Create ASRWorker instance with mocked dependencies."""
-        # Create worker without dependency injection
-        worker = ASRWorker.__new__(ASRWorker)
+        """Create ASRWorker instance with Clean DI approach."""
+        # Create worker with Clean DI
+        worker = ASRWorker(
+            asr_service=mock_asr_service,
+            config=processing_config
+        )
         
-        # Initialize manually to avoid DI
-        from app.events import EventSubscriberMixin, EventPublisherMixin
-        EventSubscriberMixin.__init__(worker, event_bus)
-        EventPublisherMixin.__init__(worker, event_bus, "asr_worker")
-        
-        worker.asr_service = mock_asr_service
-        worker.config = processing_config
-        worker.logger = MagicMock()
-        
-        # Worker state
-        worker.is_running = False
-        worker.processing_tasks = set()
-        worker.max_concurrent_tasks = processing_config.max_concurrent_workers
-        worker.chunk_timeout = processing_config.chunk_timeout_seconds
+        # Set event bus via setter injection
+        worker.set_event_bus(event_bus)
         
         return worker
     
