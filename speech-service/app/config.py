@@ -73,8 +73,8 @@ class ASRSettings(BaseSettings):
     )
     
     language: Optional[str] = Field(
-        default=None,
-        description="Language hint for transcription (auto-detect if None)"
+        default="ru",
+        description="Language for transcription (ru for Russian)"
     )
     
     beam_size: int = Field(
@@ -99,7 +99,7 @@ class ASRSettings(BaseSettings):
     )
     
     compute_type: str = Field(
-        default="float16",
+        default="int8",
         description="Compute type for inference (float16, int8, float32)"
     )
     

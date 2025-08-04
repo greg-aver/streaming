@@ -182,8 +182,7 @@ class FasterWhisperASRService(IASRService):
                 beam_size=self.beam_size,
                 best_of=self.best_of,
                 temperature=self.temperature,
-                language=language,
-                word_level_segments=True  # Enable word-level timing
+                language=language
             )
             
             # Extract text and segment information

@@ -19,7 +19,7 @@ from app.workers.diarization import DiarizationWorker
 from app.aggregators.result_aggregator import ResultAggregator
 from app.handlers.websocket_handler import WebSocketHandler
 from app.services.vad_service import MockVADService
-from app.services.asr_service import MockASRService
+from app.services.asr_service import MockASRService, FasterWhisperASRService
 from app.services.diarization_service import MockDiarizationService
 from app.interfaces.events import Event
 from app.config import ProcessingSettings, VADSettings, ASRSettings, DiarizationSettings
@@ -85,7 +85,7 @@ class IntegrationTestPipeline:
             language="ru",
             beam_size=5,
             temperature=0.0,
-            compute_type="float16"
+            compute_type="int8"  # CPU compatible
         )
         self.diarization_config = DiarizationSettings(
             model_name="pyannote/speaker-diarization-3.1",
@@ -94,9 +94,9 @@ class IntegrationTestPipeline:
             clustering_method="centroid"
         )
         
-        # Services (Mock implementations)
+        # Services (Real ASR, Mock VAD/Diarization for now)
         self.vad_service = MockVADService(self.vad_config)
-        self.asr_service = MockASRService(self.asr_config)
+        self.asr_service = FasterWhisperASRService(self.asr_config)  # REAL ASR!
         self.diarization_service = MockDiarizationService(self.diarization_config)
         
         # Workers

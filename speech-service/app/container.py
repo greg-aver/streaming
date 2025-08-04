@@ -43,7 +43,7 @@ class Container(containers.DeclarativeContainer):
     )
     
     asr_service = providers.Factory(
-        "app.services.asr_service.MockASRService", 
+        "app.services.asr_service.FasterWhisperASRService", 
         config=config.provided.asr
     )
     
