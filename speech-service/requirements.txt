@@ -35,3 +35,4 @@ mypy==1.7.1
 
 # Additional utilities
 python-multipart==0.0.6
+psutil==5.9.6
