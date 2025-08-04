@@ -93,30 +93,64 @@ class ASRWorker(IWorker, EventSubscriberMixin, EventPublisherMixin):
         Raises:
             WorkerError: If worker shutdown fails
         """
+        self.logger.info("Stopping ASR worker")
+        
+        # Stop accepting new tasks
+        self.is_running = False
+        
+        cleanup_errors = []
+        
+        # Wait for processing tasks to complete
         try:
-            self.logger.info("Stopping ASR worker")
-            
-            self.is_running = False
-            
-            # Wait for processing tasks to complete
             if self.processing_tasks:
                 self.logger.info(
                     "Waiting for processing tasks to complete",
                     task_count=len(self.processing_tasks)
                 )
-                await asyncio.gather(*self.processing_tasks, return_exceptions=True)
-            
-            # Clean up event subscriptions
-            await self.cleanup_subscriptions()
-            
-            # Clean up ASR service
-            await self.asr_service.cleanup()
-            
-            self.logger.info("ASR worker stopped successfully")
-            
+                # Give tasks time to complete, but don't wait forever
+                done, pending = await asyncio.wait(
+                    self.processing_tasks, 
+                    timeout=self.chunk_timeout * 2,
+                    return_when=asyncio.ALL_COMPLETED
+                )
+                
+                # Cancel any remaining tasks
+                if pending:
+                    self.logger.warning(
+                        "Cancelling pending tasks during shutdown",
+                        pending_count=len(pending)
+                    )
+                    for task in pending:
+                        task.cancel()
+                    
+                    # Wait a bit for cancellation to complete
+                    await asyncio.gather(*pending, return_exceptions=True)
+                
         except Exception as e:
-            self.logger.error("Error during ASR worker shutdown", error=str(e))
-            raise WorkerError(f"ASR worker shutdown failed: {e}")
+            cleanup_errors.append(f"Task cleanup failed: {e}")
+            self.logger.error("Error waiting for tasks to complete", error=str(e))
+        
+        # Clean up event subscriptions (independent of task cleanup)
+        try:
+            await self.cleanup_subscriptions()
+        except Exception as e:
+            cleanup_errors.append(f"Subscription cleanup failed: {e}")
+            self.logger.error("Error cleaning up subscriptions", error=str(e))
+        
+        # Clean up ASR service (independent of other cleanup)
+        try:
+            await self.asr_service.cleanup()
+        except Exception as e:
+            cleanup_errors.append(f"ASR service cleanup failed: {e}")
+            self.logger.error("Error cleaning up ASR service", error=str(e))
+        
+        # Report results
+        if cleanup_errors:
+            error_msg = f"ASR worker shutdown completed with errors: {'; '.join(cleanup_errors)}"
+            self.logger.warning("ASR worker stopped with cleanup errors", errors=cleanup_errors)
+            raise WorkerError(error_msg)
+        else:
+            self.logger.info("ASR worker stopped successfully")
     
     async def process_chunk(self, audio_data: bytes, sample_rate: int, session_id: str, chunk_id: int) -> ProcessingResultModel:
         """
