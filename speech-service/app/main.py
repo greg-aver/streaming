@@ -28,43 +28,33 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan manager.
+    Application lifespan manager with ServiceLifecycleManager.
     
-    Handles startup and shutdown events for the FastAPI application.
+    Senior approach: Use DI container для управления всеми сервисами.
     """
     # Startup
-    logger.info("Starting Speech-to-Text service...")
+    logger.info("Starting Speech-to-Text service with DI container...")
     
-    global websocket_handler
-    settings = get_settings()
+    global lifecycle_manager, websocket_handler
     
-    # Initialize WebSocket handler (in real implementation, this would be via DI)
-    websocket_handler = WebSocketHandler(
-        event_bus=event_bus,
-        max_audio_chunk_size=settings.websocket.max_message_size,
-        session_timeout_minutes=30
-    )
-    
-    # Start WebSocket handler
-    await websocket_handler.start()
-    logger.info("WebSocket handler started")
-    
-    # TODO: Start other components (workers, aggregator) when DI is implemented
-    
-    logger.info("Speech-to-Text service started successfully")
-    
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down Speech-to-Text service...")
-    
-    if websocket_handler:
-        await websocket_handler.stop()
-        logger.info("WebSocket handler stopped")
-    
-    # TODO: Stop other components
-    
-    logger.info("Speech-to-Text service shutdown complete")
+    try:
+        # Initialize all services via ServiceLifecycleManager
+        lifecycle_manager = ServiceLifecycleManager()
+        async with lifecycle_manager:
+            # Get WebSocket handler from container
+            from app.container import container
+            websocket_handler = container.websocket_handler()
+            
+            logger.info("All services started via DI container")
+            
+            yield
+            
+        # ServiceLifecycleManager handles cleanup automatically via __aexit__
+        logger.info("All services stopped via DI container")
+        
+    except Exception as e:
+        logger.error(f"Service lifecycle error: {e}", exc_info=True)
+        raise
 
 
 def create_app() -> FastAPI:

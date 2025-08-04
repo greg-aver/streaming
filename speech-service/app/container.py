@@ -163,11 +163,10 @@ def wire_container() -> None:
     # Modules to wire for dependency injection
     modules_to_wire = [
         "app.main",
-        "app.handlers.websocket",
+        "app.handlers.websocket_handler",
         "app.workers.vad",
         "app.workers.asr", 
         "app.workers.diarization",
-        "app.aggregator",
         "app.services.vad_service",
         "app.services.asr_service",
         "app.services.diarization_service",
