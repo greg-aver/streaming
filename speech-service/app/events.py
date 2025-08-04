@@ -444,11 +444,25 @@ class EventSubscriberMixin(IEventSubscriber):
         """
         if event_name in self._subscriptions:
             handler = self._subscriptions[event_name]
-            await self._event_bus.unsubscribe(event_name, handler)
-            del self._subscriptions[event_name]
-            
-            self._logger.info(
-                "Unsubscribed from event",
+            try:
+                await self._event_bus.unsubscribe(event_name, handler)
+                self._logger.info(
+                    "Unsubscribed from event",
+                    event_name=event_name
+                )
+            except Exception as e:
+                self._logger.error(
+                    "Failed to unsubscribe from event",
+                    event_name=event_name,
+                    error=str(e)
+                )
+            finally:
+                # Always remove from local subscriptions even if event bus unsubscribe fails
+                # This prevents memory leaks in the mixin itself
+                del self._subscriptions[event_name]
+        else:
+            self._logger.warning(
+                "Attempted to unsubscribe from non-existent subscription",
                 event_name=event_name
             )
     
