@@ -37,6 +37,7 @@ class SessionManager(ISessionManager):
     def __init__(self):
         """Initialize session manager."""
         self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.cleanup_tasks: Dict[str, asyncio.Task] = {}  # Track cleanup tasks
         self.logger = structlog.get_logger(self.__class__.__name__)
     
     async def create_session(self) -> str:
@@ -82,8 +83,9 @@ class SessionManager(ISessionManager):
                 total_audio_bytes=session_info["total_audio_bytes"]
             )
             
-            # Clean up after 5 minutes for debugging
-            asyncio.create_task(self._cleanup_session_later(session_id, 300))
+            # Schedule cleanup task and track it
+            cleanup_task = asyncio.create_task(self._cleanup_session_later(session_id, 300))
+            self.cleanup_tasks[session_id] = cleanup_task
     
     async def get_next_chunk_id(self, session_id: str) -> int:
         """Get next chunk ID for session."""
@@ -100,10 +102,39 @@ class SessionManager(ISessionManager):
     
     async def _cleanup_session_later(self, session_id: str, delay_seconds: int) -> None:
         """Clean up session after delay."""
-        await asyncio.sleep(delay_seconds)
-        if session_id in self.sessions:
-            del self.sessions[session_id]
-            self.logger.debug("Session cleaned up", session_id=session_id)
+        try:
+            await asyncio.sleep(delay_seconds)
+            if session_id in self.sessions:
+                del self.sessions[session_id]
+                self.logger.debug("Session cleaned up", session_id=session_id)
+        except asyncio.CancelledError:
+            self.logger.debug("Session cleanup cancelled", session_id=session_id)
+            raise
+        finally:
+            # Remove task from tracking
+            if session_id in self.cleanup_tasks:
+                del self.cleanup_tasks[session_id]
+    
+    async def cancel_all_cleanup_tasks(self) -> None:
+        """Cancel all pending cleanup tasks."""
+        if not self.cleanup_tasks:
+            return
+        
+        self.logger.info(f"Cancelling {len(self.cleanup_tasks)} cleanup tasks")
+        
+        # Cancel all tasks
+        for session_id, task in self.cleanup_tasks.items():
+            if not task.done():
+                task.cancel()
+                self.logger.debug("Cleanup task cancelled", session_id=session_id)
+        
+        # Wait for all cancellations to complete
+        if self.cleanup_tasks:
+            await asyncio.gather(*self.cleanup_tasks.values(), return_exceptions=True)
+        
+        # Clear the tracking dictionary
+        self.cleanup_tasks.clear()
+        self.logger.info("All cleanup tasks cancelled")
 
 
 class WebSocketManager(IWebSocketManager):
@@ -237,6 +268,9 @@ class WebSocketHandler(IWebSocketHandler, EventPublisherMixin, EventSubscriberMi
         active_sessions = await self.websocket_manager.get_active_sessions()
         for session_id in active_sessions:
             await self.handle_disconnect(session_id)
+        
+        # Cancel all session cleanup tasks
+        await self.session_manager.cancel_all_cleanup_tasks()
         
         # Clean up subscriptions
         await self.cleanup_subscriptions()
