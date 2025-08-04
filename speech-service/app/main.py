@@ -15,10 +15,11 @@ from app.config import get_settings
 from app.api import health, sessions, stats
 from app.handlers.websocket_handler import WebSocketHandler
 from app.events import AsyncEventBus
+from app.container import ServiceLifecycleManager
 
 
-# Global components (in real implementation, these would be managed by DI container)
-event_bus = AsyncEventBus()
+# Global components managed by DI container
+lifecycle_manager = None
 websocket_handler = None
 
 logger = logging.getLogger(__name__)
