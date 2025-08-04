@@ -138,8 +138,13 @@ class DiarizationWorker(IWorker, EventSubscriberMixin, EventPublisherMixin):
                 chunk_id=event.data.get("chunk_id", 0),
                 component="diarization",
                 success=False,
-                result={"error": f"Diarization timeout after {self.chunk_timeout}s"},
-                processing_time_ms=int(self.chunk_timeout * 1000)
+                result={
+                    "speakers": [],
+                    "segments": [],
+                    "error": f"Diarization timeout after {self.chunk_timeout}s"
+                },
+                processing_time_ms=int(self.chunk_timeout * 1000),
+                error=f"Diarization timeout after {self.chunk_timeout}s"
             )
             
             # Publish error result
@@ -213,8 +218,13 @@ class DiarizationWorker(IWorker, EventSubscriberMixin, EventPublisherMixin):
                 chunk_id=chunk_id,
                 component="diarization",
                 success=False,
-                result={"error": str(e)},
-                processing_time_ms=0
+                result={
+                    "speakers": [],
+                    "segments": [],
+                    "error": str(e)
+                },
+                processing_time_ms=0,
+                error=str(e)
             )
             
             # Publish error
@@ -263,7 +273,7 @@ class DiarizationWorker(IWorker, EventSubscriberMixin, EventPublisherMixin):
         
         try:
             # Process with diarization service
-            diarization_result = await self.diarization_service.identify_speakers(
+            diarization_result = await self.diarization_service.diarize(
                 audio_data=audio_data,
                 sample_rate=sample_rate
             )
@@ -298,8 +308,13 @@ class DiarizationWorker(IWorker, EventSubscriberMixin, EventPublisherMixin):
                 chunk_id=chunk_id,
                 component="diarization",
                 success=False,
-                result={"error": str(e)},
-                processing_time_ms=processing_time
+                result={
+                    "speakers": [],
+                    "segments": [],
+                    "error": str(e)
+                },
+                processing_time_ms=processing_time,
+                error=str(e)
             )
             
             self.logger.error(
