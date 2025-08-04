@@ -196,12 +196,12 @@ class VADWorker(IWorker):
                 "Processing audio chunk",
                 session_id=audio_chunk.session_id,
                 chunk_id=audio_chunk.chunk_id,
-                data_size=len(audio_chunk.audio_data)
+                data_size=len(audio_chunk.data)
             )
             
             # Process through VAD service with timeout
             result = await asyncio.wait_for(
-                self.vad_service.detect_speech(audio_chunk.audio_data, audio_chunk.sample_rate),
+                self.vad_service.detect_speech(audio_chunk.data, audio_chunk.sample_rate),
                 timeout=self.chunk_timeout
             )
             
@@ -212,20 +212,20 @@ class VADWorker(IWorker):
                 session_id=audio_chunk.session_id,
                 chunk_id=audio_chunk.chunk_id,
                 component="vad",
-                result=result.model_dump(),
+                result=result if isinstance(result, dict) else result.model_dump(),
                 processing_time_ms=processing_time,
                 success=True
             )
             
             # Publish results
-            await self._publish_results(processing_result, result)
+            await self._publish_results(processing_result, result, event.correlation_id, chunk_data)
             
             self.logger.debug(
                 "Audio chunk processed successfully",
                 session_id=audio_chunk.session_id,
                 chunk_id=audio_chunk.chunk_id,
                 processing_time_ms=processing_time,
-                is_speech=result.is_speech
+                is_speech=result.get("is_speech", False) if isinstance(result, dict) else result.is_speech
             )
             
         except asyncio.TimeoutError:
@@ -239,24 +239,39 @@ class VADWorker(IWorker):
                 chunk_data, str(e), processing_time
             )
     
-    async def _publish_results(self, processing_result: ProcessingResultModel, vad_result) -> None:
+    async def _publish_results(self, processing_result: ProcessingResultModel, vad_result, correlation_id: str = None, chunk_data: Dict[str, Any] = None) -> None:
         """
         Publish processing results.
         
         Senior approach: Separate result publishing for better maintainability
         """
         # Always publish vad_completed
-        await self.event_bus.publish(
-            "vad_completed",
-            processing_result.model_dump()
+        vad_completed_event = Event(
+            name="vad_completed",
+            data=processing_result.model_dump(),
+            source="vad_worker",
+            correlation_id=correlation_id
         )
+        await self.event_bus.publish(vad_completed_event)
         
         # Publish speech_detected if speech was detected
-        if vad_result.is_speech:
-            await self.event_bus.publish(
-                "speech_detected", 
-                processing_result.model_dump()
+        if vad_result.get("is_speech", False):  # Handle dict result
+            # Create special format for speech_detected event (for ASR/Diarization workers)
+            speech_data = {
+                "session_id": processing_result.session_id,
+                "chunk_id": processing_result.chunk_id,
+                "data": chunk_data.get("data"),  # Raw audio data for processing
+                "sample_rate": chunk_data.get("sample_rate", 16000),
+                "vad_confidence": vad_result.get("confidence", 0.0)
+            }
+            
+            speech_detected_event = Event(
+                name="speech_detected", 
+                data=speech_data,
+                source="vad_worker",
+                correlation_id=correlation_id
             )
+            await self.event_bus.publish(speech_detected_event)
     
     async def _handle_processing_error(
         self, 
@@ -277,19 +292,29 @@ class VADWorker(IWorker):
             processing_time_ms=processing_time
         )
         
-        # Create error result
+        # Create error result with required VAD fields
         error_result = ProcessingResultModel(
             session_id=chunk_data.get("session_id", "unknown"),
             chunk_id=chunk_data.get("chunk_id", -1),
             component="vad",
-            result={"error": error_message},
+            result={
+                "is_speech": False,
+                "confidence": 0.0,
+                "error": error_message
+            },
             processing_time_ms=processing_time,
             success=False
         )
         
         # Publish error result
         try:
-            await self.event_bus.publish("vad_completed", error_result.model_dump())
+            error_event = Event(
+                name="vad_completed",
+                data=error_result.model_dump(),
+                source="vad_worker",
+                correlation_id=None
+            )
+            await self.event_bus.publish(error_event)
         except Exception as publish_error:
             self.logger.error(
                 "Failed to publish error result",
@@ -305,7 +330,88 @@ class VADWorker(IWorker):
         except Exception:
             pass  # Ignore cleanup errors during error handling
     
-    async def get_status(self) -> Dict[str, Any]:
+    async def process_chunk(self, audio_chunk: AudioChunkModel) -> ProcessingResultModel:
+        """
+        Process audio chunk and return VAD result.
+        
+        Senior approach: Compatibility method для интерфейса IWorker
+        
+        Args:
+            audio_chunk: Audio chunk data to process
+            
+        Returns:
+            Processing result with VAD detection data
+            
+        Raises:
+            WorkerError: If processing fails
+        """
+        if not self.is_running:
+            raise WorkerError("VAD worker is not running")
+        
+        start_time = time.time()
+        
+        try:
+            # Run VAD detection
+            result = await asyncio.wait_for(
+                self.vad_service.detect_speech(audio_chunk.data, audio_chunk.sample_rate),
+                timeout=self.chunk_timeout
+            )
+            
+            processing_time_ms = (time.time() - start_time) * 1000
+            
+            # Create processing result
+            processing_result = ProcessingResultModel(
+                session_id=audio_chunk.session_id,
+                chunk_id=audio_chunk.chunk_id,
+                component="vad",
+                result=result if isinstance(result, dict) else result.model_dump(),
+                processing_time_ms=processing_time_ms,
+                success=True
+            )
+            
+            self.logger.debug(
+                "VAD processing completed",
+                session_id=audio_chunk.session_id,
+                chunk_id=audio_chunk.chunk_id,
+                is_speech=result.get("is_speech", False),
+                confidence=result.get("confidence", 0.0),
+                processing_time_ms=processing_time_ms
+            )
+            
+            return processing_result
+            
+        except asyncio.TimeoutError:
+            processing_time_ms = (time.time() - start_time) * 1000
+            # Return error result
+            return ProcessingResultModel(
+                session_id=audio_chunk.session_id,
+                chunk_id=audio_chunk.chunk_id,
+                component="vad",
+                result={
+                    "is_speech": False,
+                    "confidence": 0.0,
+                    "error": "Processing timeout"
+                },
+                processing_time_ms=processing_time_ms,
+                success=False
+            )
+        except Exception as e:
+            processing_time_ms = (time.time() - start_time) * 1000
+            # Return error result
+            return ProcessingResultModel(
+                session_id=audio_chunk.session_id,
+                chunk_id=audio_chunk.chunk_id,
+                component="vad",
+                result={
+                    "is_speech": False,
+                    "confidence": 0.0,
+                    "error": str(e)
+                },
+                processing_time_ms=processing_time_ms,
+                success=False
+            )
+
+    def get_status(self) -> Dict[str, Any]:
         """
         Get current worker status.
         
@@ -314,8 +420,11 @@ class VADWorker(IWorker):
         """
         return {
             "is_running": self.is_running,
-            "active_tasks": len(self.processing_tasks),
+            "processing_tasks": len(self.processing_tasks),
             "max_concurrent_tasks": self.max_concurrent_tasks,
             "chunk_timeout": self.chunk_timeout,
-            "service_initialized": hasattr(self.vad_service, '_initialized') and self.vad_service._initialized
+            "vad_service_info": {
+                "type": type(self.vad_service).__name__,
+                "initialized": hasattr(self.vad_service, '_initialized') and self.vad_service._initialized
+            }
         }

@@ -69,8 +69,7 @@ class Container(containers.DeclarativeContainer):
     diarization_worker = providers.Factory(
         "app.workers.diarization.DiarizationWorker",
         diarization_service=diarization_service,
-        config=config.provided.processing,
-        event_bus=event_bus
+        config=config.provided.processing
     )
     
     # Result Aggregator - объединяет результаты от всех workers
@@ -235,10 +234,11 @@ async def initialize_services() -> None:
         await asr_worker.start()
         logger.info("ASR worker started")
         
-        # diarization_worker = container.diarization_worker()
-        # diarization_worker.set_event_bus(event_bus)
-        # await diarization_worker.start()
-        # logger.info("Diarization worker started")
+        # Diarization worker with Clean DI 
+        diarization_worker = container.diarization_worker()
+        diarization_worker.set_event_bus(event_bus)  # Setter injection
+        await diarization_worker.start()
+        logger.info("Diarization worker started")
         
         # Phase 4: Start aggregator (должен стартовать ПОСЛЕ workers)
         result_aggregator = container.result_aggregator()

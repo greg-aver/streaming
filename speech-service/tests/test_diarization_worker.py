@@ -54,25 +54,9 @@ class TestDiarizationWorker:
     
     @pytest.fixture
     def diarization_worker(self, event_bus, mock_diarization_service, processing_config):
-        """Create DiarizationWorker instance with mocked dependencies."""
-        # Create worker without dependency injection
-        worker = DiarizationWorker.__new__(DiarizationWorker)
-        
-        # Initialize manually to avoid DI
-        from app.events import EventSubscriberMixin, EventPublisherMixin
-        EventSubscriberMixin.__init__(worker, event_bus)
-        EventPublisherMixin.__init__(worker, event_bus, "diarization_worker")
-        
-        worker.diarization_service = mock_diarization_service
-        worker.config = processing_config
-        worker.logger = MagicMock()
-        
-        # Worker state
-        worker.is_running = False
-        worker.processing_tasks = set()
-        worker.max_concurrent_tasks = processing_config.max_concurrent_workers
-        worker.chunk_timeout = processing_config.chunk_timeout_seconds
-        
+        """Create DiarizationWorker instance with Clean DI pattern."""
+        worker = DiarizationWorker(diarization_service=mock_diarization_service, config=processing_config)
+        worker.set_event_bus(event_bus)
         return worker
     
     @pytest.mark.asyncio

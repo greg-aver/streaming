@@ -58,25 +58,9 @@ class TestVADWorker:
     
     @pytest.fixture
     def vad_worker(self, event_bus, mock_vad_service, processing_config):
-        """Create VADWorker instance with mocked dependencies."""
-        # Create worker without dependency injection
-        worker = VADWorker.__new__(VADWorker)
-        
-        # Initialize manually to avoid DI
-        from app.events import EventSubscriberMixin, EventPublisherMixin
-        EventSubscriberMixin.__init__(worker, event_bus)
-        EventPublisherMixin.__init__(worker, event_bus, "vad_worker")
-        
-        worker.vad_service = mock_vad_service
-        worker.config = processing_config
-        worker.logger = MagicMock()
-        
-        # Worker state
-        worker.is_running = False
-        worker.processing_tasks = set()
-        worker.max_concurrent_tasks = processing_config.max_concurrent_workers
-        worker.chunk_timeout = processing_config.chunk_timeout_seconds
-        
+        """Create VADWorker instance with Clean DI pattern."""
+        worker = VADWorker(vad_service=mock_vad_service, config=processing_config)
+        worker.set_event_bus(event_bus)
         return worker
     
     @pytest.mark.asyncio
@@ -416,7 +400,7 @@ class TestVADWorker:
         timeout_result = published_events[0]
         assert timeout_result.name == "vad_completed"
         assert timeout_result.data["success"] is False
-        assert "timeout" in timeout_result.data["error"].lower()
+        assert "timeout" in timeout_result.data["result"]["error"].lower()
     
     @pytest.mark.asyncio
     async def test_vad_worker_get_status(self, vad_worker):
