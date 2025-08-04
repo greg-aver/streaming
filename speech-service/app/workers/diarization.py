@@ -9,13 +9,10 @@ import asyncio
 import time
 from typing import Dict, Any, Optional
 import structlog
-from dependency_injector.wiring import Provide, inject
-
 from ..interfaces.services import IDiarizationService, IWorker, WorkerError
 from ..interfaces.events import IEventBus, IEventSubscriber, Event
 from ..models.audio import ProcessingResultModel
 from ..events import EventPublisherMixin, EventSubscriberMixin
-from ..container import Container
 from ..config import ProcessingSettings
 
 
@@ -25,14 +22,15 @@ class DiarizationWorker(IWorker, EventSubscriberMixin, EventPublisherMixin):
     
     Subscribes to speech_detected events, processes audio through Diarization service,
     and publishes diarization_completed events with speaker identification results.
+    
+    TODO: Refactor to Clean DI pattern (remove mixins, add setter injection)
     """
     
-    @inject
     def __init__(
         self,
-        event_bus: IEventBus = Provide[Container.event_bus],
-        diarization_service: IDiarizationService = Provide[Container.diarization_service],
-        config: ProcessingSettings = Provide[Container.config.provided.processing]
+        diarization_service: IDiarizationService,
+        config: ProcessingSettings,
+        event_bus: IEventBus
     ):
         """
         Initialize the Diarization worker.
