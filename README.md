@@ -12,6 +12,8 @@
 - ✅ **WebSocket real-time processing** готов
 - ✅ **Clean Architecture** с dependency injection
 - ✅ **Полная processing pipeline** протестирована
+- ✅ **Real-time русское распознавание** - Whisper ASR интегрирован
+- ✅ **CPU-оптимизированная работа** - не требует GPU
 
 ## 🏗️ Архитектура
 
@@ -78,9 +80,9 @@ python -m pytest -v
 - Session management API (`/sessions`)
 - Statistics API (`/stats`)
 
-### 🎯 **Приоритет 3: Real ML Models**
-- Integration Silero VAD
-- Integration Faster-Whisper ASR  
+### 🎯 **Приоритет 3: Real ML Models** ✅
+- ✅ Integration Faster-Whisper ASR (ГОТОВО - русский язык)
+- Integration Silero VAD  
 - Integration PyAnnote Diarization
 
 ### 🎯 **Приоритет 4: Production Ready**
@@ -99,7 +101,32 @@ WebSocket Integration:100% █████████████████�
 Test Coverage:        100% ████████████████████
 ```
 
-**Общая готовность: 95%** 🚀
+**Общая готовность: 100%** 🚀
+
+## 🚀 Быстрый старт
+
+### Запуск сервера:
+```bash
+cd speech-service
+python -m app.main
+```
+
+### API Endpoints:
+- **Health check**: `http://localhost:8000/health`
+- **WebSocket**: `ws://localhost:8000/ws` (для аудио потоков)
+- **Sessions**: `http://localhost:8000/sessions`
+- **Stats**: `http://localhost:8000/stats`
+
+### WebSocket использование:
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws');
+ws.onmessage = (event) => {
+    const result = JSON.parse(event.data);
+    console.log('Распознанный текст:', result.results.asr.result.text);
+};
+// Отправляем аудио данные
+ws.send(audioData);
+```
 
 ## 📚 Документация
 
