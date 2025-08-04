@@ -1,9 +1,9 @@
 """
-Voice Activity Detection (VAD) worker implementation with Clean DI.
+Automatic Speech Recognition (ASR) worker implementation with Clean DI.
 
 Senior approach: Direct dependency injection without mixins for better testability
-and cleaner architecture. This module provides VAD worker that processes audio chunks 
-and publishes results.
+and cleaner architecture. This module provides ASR worker that processes speech audio 
+and publishes transcription results.
 """
 
 import asyncio
@@ -11,36 +11,36 @@ import time
 from typing import Dict, Any, Optional, Set
 import structlog
 
-from ..interfaces.services import IVADService, IWorker, WorkerError
+from ..interfaces.services import IASRService, IWorker, WorkerError
 from ..interfaces.events import IEventBus, Event
-from ..models.audio import AudioChunkModel, ProcessingResultModel
+from ..models.audio import ProcessingResultModel
 from ..config import ProcessingSettings
 
 
-class VADWorker(IWorker):
+class ASRWorker(IWorker):
     """
-    VAD Worker implementation with Clean DI approach.
+    ASR Worker implementation with Clean DI approach.
     
     Senior pattern: Direct dependency injection без mixins для лучшей testability.
-    Subscribes to audio_chunk_received events, processes audio through VAD service,
-    and publishes vad_completed and speech_detected events.
+    Subscribes to speech_detected events, processes audio through ASR service,
+    and publishes asr_completed events with transcription results.
     """
     
     def __init__(
         self, 
-        vad_service: IVADService, 
+        asr_service: IASRService, 
         config: ProcessingSettings
     ):
         """
-        Initialize the VAD worker with dependency injection.
+        Initialize the ASR worker with dependency injection.
         
         Senior approach: Получаем зависимости через конструктор, event_bus через setter
         
         Args:
-            vad_service: VAD service for speech detection  
+            asr_service: ASR service for speech transcription
             config: Processing configuration settings
         """
-        self.vad_service = vad_service
+        self.asr_service = asr_service
         self.config = config
         
         # Internal state management
@@ -57,7 +57,7 @@ class VADWorker(IWorker):
         self.logger = structlog.get_logger(self.__class__.__name__)
         
         self.logger.info(
-            "VAD worker initialized",
+            "ASR worker initialized",
             max_concurrent_tasks=self.max_concurrent_tasks,
             chunk_timeout=self.chunk_timeout
         )
@@ -87,24 +87,24 @@ class VADWorker(IWorker):
             WorkerError: If worker startup fails
         """
         try:
-            self.logger.info("Starting VAD worker")
+            self.logger.info("Starting ASR worker")
             
-            # Phase 1: Initialize VAD service
-            await self.vad_service.initialize()
-            self.logger.info("VAD service initialized")
+            # Phase 1: Initialize ASR service
+            await self.asr_service.initialize()
+            self.logger.info("ASR service initialized")
             
             # Phase 2: Set up event subscriptions
-            await self.event_bus.subscribe("audio_chunk_received", self._handle_audio_chunk)
-            self.logger.info("Subscribed to audio_chunk_received events")
+            await self.event_bus.subscribe("speech_detected", self._handle_speech_detected)
+            self.logger.info("Subscribed to speech_detected events")
             
             # Phase 3: Mark as running
             self.is_running = True
-            self.logger.info("VAD worker started successfully")
+            self.logger.info("ASR worker started successfully")
             
         except Exception as e:
-            self.logger.error("Failed to start VAD worker", error=str(e), exc_info=True)
+            self.logger.error("Failed to start ASR worker", error=str(e), exc_info=True)
             await self._cleanup_on_error()
-            raise WorkerError(f"VAD worker startup failed: {e}")
+            raise WorkerError(f"ASR worker startup failed: {e}")
     
     async def stop(self) -> None:
         """
@@ -112,7 +112,7 @@ class VADWorker(IWorker):
         
         Senior approach: Graceful shutdown with proper resource cleanup
         """
-        self.logger.info("Stopping VAD worker")
+        self.logger.info("Stopping ASR worker")
         
         # Phase 1: Mark as not running (stop accepting new work)
         self.is_running = False
@@ -139,23 +139,23 @@ class VADWorker(IWorker):
         
         # Phase 3: Unsubscribe from events
         try:
-            await self.event_bus.unsubscribe("audio_chunk_received", self._handle_audio_chunk)
+            await self.event_bus.unsubscribe("speech_detected", self._handle_speech_detected)
             self.logger.info("Unsubscribed from events")
         except Exception as e:
             self.logger.warning("Error unsubscribing from events", error=str(e))
         
         # Phase 4: Cleanup service
         try:
-            await self.vad_service.cleanup()
-            self.logger.info("VAD service cleaned up")
+            await self.asr_service.cleanup()
+            self.logger.info("ASR service cleaned up")
         except Exception as e:
-            self.logger.warning("Error cleaning up VAD service", error=str(e))
+            self.logger.warning("Error cleaning up ASR service", error=str(e))
         
-        self.logger.info("VAD worker stopped successfully")
+        self.logger.info("ASR worker stopped successfully")
     
-    async def _handle_audio_chunk(self, event: Event) -> None:
+    async def _handle_speech_detected(self, event: Event) -> None:
         """
-        Handle incoming audio chunk events.
+        Handle incoming speech detected events.
         
         Senior approach: Proper concurrency control and error handling
         """
@@ -166,22 +166,22 @@ class VADWorker(IWorker):
         # Check concurrency limits
         if len(self.processing_tasks) >= self.max_concurrent_tasks:
             self.logger.warning(
-                "Max concurrent tasks reached, dropping audio chunk",
+                "Max concurrent tasks reached, dropping speech chunk",
                 active_tasks=len(self.processing_tasks),
                 max_tasks=self.max_concurrent_tasks
             )
             return
         
         # Create processing task
-        task = asyncio.create_task(self._process_audio_chunk(event))
+        task = asyncio.create_task(self._process_speech_chunk(event))
         self.processing_tasks.add(task)
         
         # Clean up completed tasks
         task.add_done_callback(self.processing_tasks.discard)
     
-    async def _process_audio_chunk(self, event: Event) -> None:
+    async def _process_speech_chunk(self, event: Event) -> None:
         """
-        Process individual audio chunk.
+        Process individual speech chunk.
         
         Senior approach: Comprehensive error handling and performance tracking
         """
@@ -189,19 +189,31 @@ class VADWorker(IWorker):
         chunk_data = event.data
         
         try:
-            # Parse audio chunk
-            audio_chunk = AudioChunkModel(**chunk_data)
+            # Extract audio data from the processing result
+            result_data = chunk_data.get("result", {})
+            audio_data = result_data.get("audio_data")
+            sample_rate = result_data.get("sample_rate", 16000)
+            
+            if not audio_data:
+                # Fallback: try to get from chunk_data directly
+                audio_data = chunk_data.get("audio_data")
+            
+            if not audio_data:
+                raise ValueError("No audio data found in speech_detected event")
+            
+            session_id = chunk_data.get("session_id", "unknown")
+            chunk_id = chunk_data.get("chunk_id", -1)
             
             self.logger.debug(
-                "Processing audio chunk",
-                session_id=audio_chunk.session_id,
-                chunk_id=audio_chunk.chunk_id,
-                data_size=len(audio_chunk.audio_data)
+                "Processing speech chunk",
+                session_id=session_id,
+                chunk_id=chunk_id,
+                data_size=len(audio_data) if isinstance(audio_data, (bytes, list)) else "unknown"
             )
             
-            # Process through VAD service with timeout
+            # Process through ASR service with timeout
             result = await asyncio.wait_for(
-                self.vad_service.detect_speech(audio_chunk.audio_data, audio_chunk.sample_rate),
+                self.asr_service.transcribe(audio_data, sample_rate),
                 timeout=self.chunk_timeout
             )
             
@@ -209,23 +221,23 @@ class VADWorker(IWorker):
             
             # Create result model
             processing_result = ProcessingResultModel(
-                session_id=audio_chunk.session_id,
-                chunk_id=audio_chunk.chunk_id,
-                component="vad",
+                session_id=session_id,
+                chunk_id=chunk_id,
+                component="asr",
                 result=result.model_dump(),
                 processing_time_ms=processing_time,
                 success=True
             )
             
             # Publish results
-            await self._publish_results(processing_result, result)
+            await self.event_bus.publish("asr_completed", processing_result.model_dump())
             
             self.logger.debug(
-                "Audio chunk processed successfully",
-                session_id=audio_chunk.session_id,
-                chunk_id=audio_chunk.chunk_id,
+                "Speech chunk processed successfully",
+                session_id=session_id,
+                chunk_id=chunk_id,
                 processing_time_ms=processing_time,
-                is_speech=result.is_speech
+                transcription=result.text[:100] + "..." if len(result.text) > 100 else result.text
             )
             
         except asyncio.TimeoutError:
@@ -237,25 +249,6 @@ class VADWorker(IWorker):
             processing_time = (time.time() - start_time) * 1000
             await self._handle_processing_error(
                 chunk_data, str(e), processing_time
-            )
-    
-    async def _publish_results(self, processing_result: ProcessingResultModel, vad_result) -> None:
-        """
-        Publish processing results.
-        
-        Senior approach: Separate result publishing for better maintainability
-        """
-        # Always publish vad_completed
-        await self.event_bus.publish(
-            "vad_completed",
-            processing_result.model_dump()
-        )
-        
-        # Publish speech_detected if speech was detected
-        if vad_result.is_speech:
-            await self.event_bus.publish(
-                "speech_detected", 
-                processing_result.model_dump()
             )
     
     async def _handle_processing_error(
@@ -270,7 +263,7 @@ class VADWorker(IWorker):
         Senior approach: Structured error handling with proper logging
         """
         self.logger.error(
-            "VAD processing failed",
+            "ASR processing failed",
             error=error_message,
             session_id=chunk_data.get("session_id"),
             chunk_id=chunk_data.get("chunk_id"),
@@ -281,7 +274,7 @@ class VADWorker(IWorker):
         error_result = ProcessingResultModel(
             session_id=chunk_data.get("session_id", "unknown"),
             chunk_id=chunk_data.get("chunk_id", -1),
-            component="vad",
+            component="asr",
             result={"error": error_message},
             processing_time_ms=processing_time,
             success=False
@@ -289,7 +282,7 @@ class VADWorker(IWorker):
         
         # Publish error result
         try:
-            await self.event_bus.publish("vad_completed", error_result.model_dump())
+            await self.event_bus.publish("asr_completed", error_result.model_dump())
         except Exception as publish_error:
             self.logger.error(
                 "Failed to publish error result",
@@ -301,7 +294,7 @@ class VADWorker(IWorker):
         """Clean up resources when startup fails."""
         try:
             if self._event_bus:
-                await self._event_bus.unsubscribe("audio_chunk_received", self._handle_audio_chunk)
+                await self._event_bus.unsubscribe("speech_detected", self._handle_speech_detected)
         except Exception:
             pass  # Ignore cleanup errors during error handling
     
@@ -317,5 +310,5 @@ class VADWorker(IWorker):
             "active_tasks": len(self.processing_tasks),
             "max_concurrent_tasks": self.max_concurrent_tasks,
             "chunk_timeout": self.chunk_timeout,
-            "service_initialized": hasattr(self.vad_service, '_initialized') and self.vad_service._initialized
+            "service_initialized": hasattr(self.asr_service, '_initialized') and self.asr_service._initialized
         }

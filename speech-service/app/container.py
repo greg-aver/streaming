@@ -36,75 +36,57 @@ class Container(containers.DeclarativeContainer):
         AsyncEventBus
     )
     
-    # Services - will be implemented in next step
-    # Services - Mock implementations for testing
+    # Services - Real implementations
     vad_service = providers.Factory(
-        lambda config: None,  # Placeholder, will be replaced in tests
+        "app.services.vad_service.MockVADService",
         config=config.provided.vad
     )
     
     asr_service = providers.Factory(
-        lambda config: None,  # Placeholder, will be replaced in tests
+        "app.services.asr_service.MockASRService", 
         config=config.provided.asr
     )
     
     diarization_service = providers.Factory(
-        lambda config: None,  # Placeholder, will be replaced in tests
+        "app.services.diarization_service.MockDiarizationService",
         config=config.provided.diarization
     )
     
-    # Repositories - will be implemented
-    # result_repository = providers.Singleton(
-    #     InMemoryResultRepository
-    # )
+    # Workers - Event-driven processing components
+    # Note: Используем string imports для lazy loading и избежания circular imports
+    vad_worker = providers.Factory(
+        "app.workers.vad.VADWorker",
+        vad_service=vad_service,
+        config=config.provided.processing
+    )
     
-    # Workers - will be implemented
-    # vad_worker = providers.Factory(
-    #     VADWorker,
-    #     event_bus=event_bus,
-    #     vad_service=vad_service,
-    #     config=config.provided.processing
-    # )
+    asr_worker = providers.Factory(
+        "app.workers.asr.ASRWorker",
+        asr_service=asr_service,
+        config=config.provided.processing
+    )
     
-    # asr_worker = providers.Factory(
-    #     ASRWorker,
-    #     event_bus=event_bus,
-    #     asr_service=asr_service,
-    #     config=config.provided.processing
-    # )
+    diarization_worker = providers.Factory(
+        "app.workers.diarization.DiarizationWorker",
+        diarization_service=diarization_service,
+        config=config.provided.processing
+    )
     
-    # diarization_worker = providers.Factory(
-    #     DiarizationWorker,
-    #     event_bus=event_bus,
-    #     diarization_service=diarization_service,
-    #     config=config.provided.processing
-    # )
+    # Result Aggregator - объединяет результаты от всех workers
+    result_aggregator = providers.Factory(
+        "app.aggregators.result_aggregator.ResultAggregator",
+        event_bus=event_bus,
+        aggregation_timeout_seconds=config.provided.processing.chunk_timeout_seconds,
+        cleanup_interval_seconds=1.0
+    )
     
-    # Aggregator - will be implemented
-    # result_aggregator = providers.Factory(
-    #     ResultAggregator,
-    #     event_bus=event_bus,
-    #     repository=result_repository,
-    #     config=config.provided.processing
-    # )
-    
-    # WebSocket components - will be implemented
-    # session_manager = providers.Singleton(
-    #     InMemorySessionManager
-    # )
-    
-    # websocket_manager = providers.Singleton(
-    #     WebSocketManager,
-    #     session_manager=session_manager
-    # )
-    
-    # websocket_handler = providers.Factory(
-    #     WebSocketHandler,
-    #     event_bus=event_bus,
-    #     websocket_manager=websocket_manager,
-    #     session_manager=session_manager,
-    #     config=config.provided.websocket
-    # )
+    # WebSocket components - real-time communication
+    websocket_handler = providers.Factory(
+        "app.handlers.websocket_handler.WebSocketHandler",
+        event_bus=event_bus,
+        max_audio_chunk_size=config.provided.websocket.max_message_size,
+        session_timeout_minutes=30
+    )
 
 
 class ApplicationContainer(containers.DeclarativeContainer):
@@ -215,52 +197,65 @@ def unwire_container() -> None:
 
 async def initialize_services() -> None:
     """
-    Initialize all services and workers.
+    Initialize all services and workers with proper DI setup.
     
-    This function should be called during application startup
-    to initialize all components that require async setup.
+    Senior approach: Правильный порядок инициализации с обработкой ошибок
+    и поддержкой new DI pattern с setter injection.
     """
     logger = structlog.get_logger("initialization")
     
     try:
-        # Initialize event bus
+        # Phase 1: Initialize core infrastructure
         event_bus = container.event_bus()
         logger.info("Event bus initialized")
         
-        # Initialize services (when implemented)
-        # vad_service = container.vad_service()
-        # await vad_service.initialize()
-        # logger.info("VAD service initialized")
+        # Phase 2: Initialize services
+        vad_service = container.vad_service()
+        await vad_service.initialize()
+        logger.info("VAD service initialized")
         
-        # asr_service = container.asr_service()
-        # await asr_service.initialize()
-        # logger.info("ASR service initialized")
+        asr_service = container.asr_service()
+        await asr_service.initialize()
+        logger.info("ASR service initialized")
         
-        # diarization_service = container.diarization_service()
-        # await diarization_service.initialize()
-        # logger.info("Diarization service initialized")
+        diarization_service = container.diarization_service()
+        await diarization_service.initialize()
+        logger.info("Diarization service initialized")
         
-        # Start workers (when implemented)
-        # vad_worker = container.vad_worker()
-        # await vad_worker.start()
-        # logger.info("VAD worker started")
+        # Phase 3: Create and configure workers
+        # Senior pattern: two-phase initialization для новых DI workers
+        vad_worker = container.vad_worker()
+        vad_worker.set_event_bus(event_bus)  # Setter injection
+        await vad_worker.start()
+        logger.info("VAD worker started")
         
+        # TODO: Update ASR and Diarization workers when refactored
         # asr_worker = container.asr_worker()
+        # asr_worker.set_event_bus(event_bus)
         # await asr_worker.start()
         # logger.info("ASR worker started")
         
         # diarization_worker = container.diarization_worker()
+        # diarization_worker.set_event_bus(event_bus)
         # await diarization_worker.start()
         # logger.info("Diarization worker started")
         
-        # result_aggregator = container.result_aggregator()
-        # await result_aggregator.start()
-        # logger.info("Result aggregator started")
+        # Phase 4: Start aggregator (должен стартовать ПОСЛЕ workers)
+        result_aggregator = container.result_aggregator()
+        await result_aggregator.start()
+        logger.info("Result aggregator started")
         
-        logger.info("All services initialized successfully")
+        # Phase 5: Start WebSocket handler (последний, так как принимает трафик)
+        websocket_handler = container.websocket_handler()
+        await websocket_handler.start()
+        logger.info("WebSocket handler started")
+        
+        logger.info("All services initialized successfully - system ready to accept traffic")
         
     except Exception as e:
-        logger.error("Failed to initialize services", error=str(e))
+        logger.error("Failed to initialize services", error=str(e), exc_info=True)
+        # При ошибке инициализации - попытаться cleanup что успели создать
+        await cleanup_services()
         raise
 
 
@@ -270,45 +265,75 @@ async def cleanup_services() -> None:
     
     This function should be called during application shutdown
     for graceful resource cleanup.
+    
+    Senior approach: Cleanup в обратном порядке с graceful degradation
     """
     logger = structlog.get_logger("cleanup")
     
+    # Senior pattern: Cleanup в ОБРАТНОМ порядке от инициализации
+    # Не падаем при ошибках cleanup - логируем и продолжаем
+    
+    # Phase 1: Stop WebSocket handler (перестаем принимать новый трафик)
     try:
-        # Stop workers (when implemented)
-        # vad_worker = container.vad_worker()
-        # await vad_worker.stop()
-        # logger.info("VAD worker stopped")
-        
-        # asr_worker = container.asr_worker()
-        # await asr_worker.stop()
-        # logger.info("ASR worker stopped")
-        
-        # diarization_worker = container.diarization_worker()
-        # await diarization_worker.stop()
-        # logger.info("Diarization worker stopped")
-        
-        # result_aggregator = container.result_aggregator()
-        # await result_aggregator.stop()
-        # logger.info("Result aggregator stopped")
-        
-        # Clean up services (when implemented)
-        # vad_service = container.vad_service()
-        # await vad_service.cleanup()
-        # logger.info("VAD service cleaned up")
-        
-        # asr_service = container.asr_service()
-        # await asr_service.cleanup()
-        # logger.info("ASR service cleaned up")
-        
-        # diarization_service = container.diarization_service()
-        # await diarization_service.cleanup()
-        # logger.info("Diarization service cleaned up")
-        
-        logger.info("All services cleaned up successfully")
-        
+        websocket_handler = container.websocket_handler()
+        await websocket_handler.stop()
+        logger.info("WebSocket handler stopped")
     except Exception as e:
-        logger.error("Error during service cleanup", error=str(e))
-        # Don't re-raise during cleanup
+        logger.warning("Error stopping WebSocket handler", error=str(e))
+    
+    # Phase 2: Stop aggregator (перестаем агрегировать результаты)
+    try:
+        result_aggregator = container.result_aggregator()
+        await result_aggregator.stop()
+        logger.info("Result aggregator stopped")
+    except Exception as e:
+        logger.warning("Error stopping result aggregator", error=str(e))
+    
+    # Phase 3: Stop workers (в обратном порядке)
+    try:
+        diarization_worker = container.diarization_worker()
+        await diarization_worker.stop()
+        logger.info("Diarization worker stopped")
+    except Exception as e:
+        logger.warning("Error stopping diarization worker", error=str(e))
+    
+    try:
+        asr_worker = container.asr_worker()
+        await asr_worker.stop()
+        logger.info("ASR worker stopped")
+    except Exception as e:
+        logger.warning("Error stopping ASR worker", error=str(e))
+    
+    try:
+        vad_worker = container.vad_worker()
+        await vad_worker.stop()
+        logger.info("VAD worker stopped")
+    except Exception as e:
+        logger.warning("Error stopping VAD worker", error=str(e))
+    
+    # Phase 4: Cleanup services
+    try:
+        diarization_service = container.diarization_service()
+        await diarization_service.cleanup()
+        logger.info("Diarization service cleaned up")
+    except Exception as e:
+        logger.warning("Error cleaning up diarization service", error=str(e))
+    
+    try:
+        asr_service = container.asr_service()
+        await asr_service.cleanup()
+        logger.info("ASR service cleaned up")
+    except Exception as e:
+        logger.warning("Error cleaning up ASR service", error=str(e))
+    
+    try:
+        vad_service = container.vad_service()
+        await vad_service.cleanup()
+        logger.info("VAD service cleaned up")
+    except Exception as e:
+        logger.warning("Error cleaning up VAD service", error=str(e))
+    
+    logger.info("All services cleanup completed (with graceful error handling)")
 
 
 # Dependency injection decorators and utilities

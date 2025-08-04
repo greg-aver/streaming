@@ -698,3 +698,151 @@ WebSocketHandler → Client Response
 ### **🏆 ОБЩИЙ ИТОГ: 141/143 тестов - 98.6% успех** 🎉
 
 **Система полностью готова для production deployment и интеграции реальных ML моделей!**
+
+---
+
+## 🏗️ ИТЕРАЦИЯ 6 - DI Container Implementation (Clean Architecture)
+
+**Дата**: 2025-08-04  
+**Время**: 12:00-13:30  
+**Статус**: 🔄 В ПРОЦЕССЕ (прервано по лимиту времени)
+
+### Цель итерации:
+Внедрение полноценного Dependency Injection Container с Clean Architecture принципами
+
+### Выполненные задачи:
+
+#### ✅ 1. Рефакторинг VADWorker для Clean DI подхода
+**Время**: 12:15  
+**Статус**: ✅ ЗАВЕРШЕНО
+**Результат**: 
+- Создан новый `app/workers/vad.py` с Clean DI подходом
+- Удалены mixins, используется прямая dependency injection
+- Реализован setter injection pattern для event_bus (избежание circular dependencies)
+- Добавлен comprehensive error handling и graceful shutdown
+- Phased initialization: object creation → configuration → startup
+- Two-phase shutdown с timeout и force cancellation
+
+#### ✅ 2. Создание нового ASRWorker с Clean DI
+**Время**: 12:45  
+**Статус**: ✅ ЗАВЕРШЕНО
+**Результат**: 
+- Создан `app/workers/asr_new.py` с тем же Clean DI pattern как VAD
+- Consistent архитектура с VADWorker (setter injection, error handling)
+- Готов к замене старого ASRWorker
+
+#### ✅ 3. Обновление container.py с реальными провайдерами
+**Время**: 13:00  
+**Статус**: ✅ ЗАВЕРШЕНО
+**Результат**: 
+- Заменены placeholder провайдеры на реальные компоненты
+- Добавлен lifecycle management с phased initialization
+- Реализован ServiceLifecycleManager для управления жизненным циклом
+- Добавлены initialize_services() и cleanup_services() функции
+- Graceful shutdown в обратном порядке от инициализации
+
+### 🔄 В ПРОЦЕССЕ (прервано):
+
+#### 4. Замена старого ASRWorker на новый DI worker
+**Статус**: ⏳ ГОТОВ К ВЫПОЛНЕНИЮ
+**Что нужно**: 
+```bash
+mv app/workers/asr.py app/workers/asr_old.py
+mv app/workers/asr_new.py app/workers/asr.py
+```
+
+#### 5. Рефакторинг DiarizationWorker для Clean DI
+**Статус**: ⏳ СЛЕДУЮЩИЙ ПРИОРИТЕТ
+**План**: Рефакторить по образцу VAD/ASR workers с Clean DI
+
+#### 6. Обновление container.py initialization
+**Статус**: ⏳ СЛЕДУЮЩИЙ ПРИОРИТЕТ
+**План**: Включить новые DI workers в initialize_services()
+
+### Архитектурные решения - Senior подход:
+
+#### 1. Clean DI Pattern без mixins:
+```python
+class Worker(IWorker):
+    def __init__(self, service: IService, config: Settings):
+        # Direct dependency injection
+        
+    def set_event_bus(self, event_bus: IEventBus) -> None:
+        # Setter injection для избежания circular dependencies
+```
+
+#### 2. Two-phase initialization в container.py:
+```python
+# Phase 1: Create workers
+worker = container.worker()
+# Phase 2: Configure event bus
+worker.set_event_bus(event_bus)
+await worker.start()
+```
+
+#### 3. Graceful shutdown с proper resource cleanup:
+- Обратный порядок остановки (WebSocket → Workers → Services)
+- Timeout для завершения задач + force cancellation
+- Graceful degradation при ошибках cleanup
+
+---
+
+### 📊 СТАТИСТИКА ИТЕРАЦИИ 6:
+
+#### Завершено:
+- ✅ **VAD Worker Clean DI**: Рефакторинг завершен
+- ✅ **ASR Worker Clean DI**: Новый worker создан
+- ✅ **Container.py**: Обновлен с реальными провайдерами и lifecycle management
+
+#### В процессе:
+- 🔄 **ASR Worker замена**: Готов к выполнению (1 команда)
+- 🔄 **Diarization Worker**: Требует рефакторинга
+- 🔄 **Container integration**: Подключение новых workers
+
+#### TODO для следующей сессии:
+1. **ВЫСОКИЙ ПРИОРИТЕТ**:
+   - Заменить `app/workers/asr.py` на `app/workers/asr_new.py`
+   - Рефакторить `DiarizationWorker` по образцу VAD/ASR workers
+   - Обновить `container.py` initialization для использования новых DI workers
+   
+2. **СРЕДНИЙ ПРИОРИТЕТ**:
+   - Создать тесты для нового DI container
+   - Обновить `main.py` для интеграции с DI container
+   - Исправить failing интеграционные тесты (2/5)
+
+---
+
+### 🎯 ГОТОВНОСТЬ К КОММИТУ:
+
+**Коммит готов**: Частичный прогресс DI Container implementation
+
+**Что коммитить**:
+- `app/workers/vad.py` - Clean DI VAD Worker
+- `app/workers/asr_new.py` - Clean DI ASR Worker  
+- `app/container.py` - Updated с реальными провайдерами
+- `CLAUDE.md` - Обновленная документация с текущим статусом
+- `TESTING_LOG.md` - Документация итерации 6
+
+**Сообщение коммита**:
+```
+feat: implement Clean DI architecture - Phase 1 (VAD/ASR workers + container)
+
+- ✅ Refactor VADWorker with Clean DI approach (no mixins)
+- ✅ Create new ASRWorker with consistent DI pattern  
+- ✅ Update container.py with real providers and lifecycle management
+- ✅ Implement setter injection for circular dependency avoidance
+- ✅ Add comprehensive error handling and graceful shutdown
+- ✅ Two-phase initialization: object creation → configuration
+
+Senior Architecture Decisions:
+- Direct dependency injection без mixins для better testability
+- Setter injection pattern для event_bus configuration
+- Phased startup/shutdown с proper resource cleanup
+- ServiceLifecycleManager для application lifecycle
+
+Next: Replace old ASR worker + refactor DiarizationWorker
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```

@@ -8,13 +8,13 @@
 
 ### **Git состояние:**
 - **Ветка**: `main`
-- **Последний коммит**: `feat: complete WebSocket Handler and finish core architecture (18/18 tests, 138/138 total)`
-- **Статус**: Clean (нет uncommitted изменений)
+- **Последний коммит**: `docs: update testing log with Iteration 3 progress and architecture insights`
+- **Статус**: 🔄 Uncommitted changes (DI Container implementation в процессе)
 
 ### **Текущая итерация:**
-- **Номер**: Итерация 5 из 5 запланированных ✅ **ЗАВЕРШЕНА**
-- **Название**: "WebSocket Handler - завершение основной архитектуры"
-- **Прогресс**: **100% завершено**
+- **Номер**: Итерация 6 🔄 **В ПРОЦЕССЕ**
+- **Название**: "DI Container Implementation - Clean Architecture upgrade"
+- **Прогресс**: **60% завершено** (прервано по лимиту времени)
 
 ### **Архитектура:**
 - **Подход**: Event-Driven Architecture в монолите ✅ **ПОЛНОСТЬЮ ГОТОВ**
@@ -149,33 +149,54 @@ Test Coverage:        100% █████████████████�
 
 ---
 
-## 🚀 СЛЕДУЮЩИЕ ЗАДАЧИ: Production Readiness & Integration
+## 🔄 ТЕКУЩИЕ ЗАДАЧИ: DI Container Implementation (В ПРОЦЕССЕ)
 
-### **📋 ПРИОРИТЕТ 1: Интеграционные тесты (рекомендуется)**
-- [ ] **End-to-End Pipeline тесты**
-  - [ ] Полный flow: WebSocket → VAD → ASR → Diarization → Result Aggregator → Response
-  - [ ] Тестирование с реальными аудио данными
-  - [ ] Валидация всех этапов processing pipeline
-  - [ ] Performance metrics для полного цикла
+### **📋 ВЫСОКИЙ ПРИОРИТЕТ - СЛЕДУЮЩИЕ ШАГИ:**
 
-### **📋 ПРИОРИТЕТ 2: FastAPI REST API**
-- [ ] **Health Check endpoints**
-  - [ ] `/health` - system health status
-  - [ ] `/health/detailed` - component-wise health
-- [ ] **Session Management API**
-  - [ ] `GET /sessions` - список активных сессий
-  - [ ] `GET /sessions/{id}` - информация о сессии
-  - [ ] `DELETE /sessions/{id}` - завершение сессии
-- [ ] **Statistics API**  
-  - [ ] `GET /stats` - общая статистика системы
-  - [ ] `GET /stats/workers` - статистика workers
-  - [ ] `GET /stats/aggregator` - статистика aggregator
+#### ✅ ЗАВЕРШЕНО В ИТЕРАЦИИ 6:
+- [x] **VAD Worker Clean DI**: Рефакторинг с удалением mixins - `app/workers/vad.py`
+- [x] **ASR Worker Clean DI**: Создан новый worker - `app/workers/asr_new.py`  
+- [x] **Container.py обновление**: Реальные провайдеры + lifecycle management
 
-### **📋 ПРИОРИТЕТ 3: Dependency Injection Integration**
-- [ ] **Full DI Container Setup**
-  - [ ] Настройка dependency-injector для всех компонентов
-  - [ ] Конфигурация lifecycle management
+#### 🔄 СЛЕДУЮЩИЕ ШАГИ (ПРОДОЛЖЕНИЕ):
+- [ ] **Замена старого ASRWorker**: `mv asr.py asr_old.py && mv asr_new.py asr.py`
+- [ ] **Рефакторинг DiarizationWorker**: По образцу VAD/ASR с Clean DI pattern
+- [ ] **Container integration**: Обновить initialize_services() для новых workers
+- [ ] **Тестирование DI container**: Создать тесты для lifecycle management
+- [ ] **Main.py интеграция**: Подключить ServiceLifecycleManager
+
+---
+
+## 🚀 ГОТОВЫЕ К ДАЛЬНЕЙШЕЙ РАБОТЕ: Production Readiness
+
+### **📋 ПРИОРИТЕТ 1: Интеграционные тесты ✅ ЧАСТИЧНО ВЫПОЛНЕНО (3/5 тестов)**
+- [x] **End-to-End Pipeline тесты** - 3/5 основных тестов проходят ✅
+  - [x] Полный flow: WebSocket → VAD → ASR → Diarization → Result Aggregator → Response
+  - [x] Multiple chunks processing
+  - [x] Performance metrics для полного цикла
+  - [ ] Concurrent sessions (требует улучшения)
+  - [ ] Advanced error handling (требует enhancement)
+
+### **📋 ПРИОРИТЕТ 2: FastAPI REST API ✅ ЗАВЕРШЕНО (32/32 тестов)**
+- [x] **Health Check endpoints**
+  - [x] `/health` - system health status
+  - [x] `/health/detailed` - component-wise health
+- [x] **Session Management API**
+  - [x] `GET /sessions` - список активных сессий
+  - [x] `GET /sessions/{id}` - информация о сессии
+  - [x] `DELETE /sessions/{id}` - завершение сессии
+- [x] **Statistics API**  
+  - [x] `GET /stats` - общая статистика системы
+  - [x] `GET /stats/workers` - статистика workers
+  - [x] `GET /stats/aggregator` - статистика aggregator
+
+### **📋 ПРИОРИТЕТ 3: Dependency Injection Integration 🔄 В ПРОЦЕССЕ**
+- [x] **Full DI Container Setup** - ЧАСТИЧНО
+  - [x] Настройка dependency-injector для всех компонентов
+  - [x] Конфигурация lifecycle management  
+  - [x] ServiceLifecycleManager для application lifecycle
   - [ ] Integration с FastAPI dependency system
+  - [ ] Завершить рефакторинг всех workers
 
 ### **📋 ПРИОРИТЕТ 4: Performance & Load Testing**
 - [ ] **Нагрузочное тестирование**
