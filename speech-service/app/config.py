@@ -26,8 +26,7 @@ class DatabaseSettings(BaseSettings):
         description="Maximum Redis connection pool size"
     )
     
-    class Config:
-        env_prefix = "DB_"
+    model_config = ConfigDict(env_prefix="DB_")
 
 
 class VADSettings(BaseSettings):
@@ -57,8 +56,7 @@ class VADSettings(BaseSettings):
         description="Expected audio sample rate in Hz"
     )
     
-    class Config:
-        env_prefix = "VAD_"
+    model_config = ConfigDict(env_prefix="VAD_")
 
 
 class ASRSettings(BaseSettings):
@@ -123,8 +121,7 @@ class ASRSettings(BaseSettings):
             raise ValueError(f"Compute type must be one of {valid_types}")
         return v
     
-    class Config:
-        env_prefix = "ASR_"
+    model_config = ConfigDict(env_prefix="ASR_")
 
 
 class DiarizationSettings(BaseSettings):
@@ -157,8 +154,7 @@ class DiarizationSettings(BaseSettings):
         description="Clustering method for speaker separation"
     )
     
-    class Config:
-        env_prefix = "DIARIZATION_"
+    model_config = ConfigDict(env_prefix="DIARIZATION_")
 
 
 class WebSocketSettings(BaseSettings):
@@ -189,8 +185,7 @@ class WebSocketSettings(BaseSettings):
         description="WebSocket close timeout in seconds"
     )
     
-    class Config:
-        env_prefix = "WS_"
+    model_config = ConfigDict(env_prefix="WS_")
 
 
 class LoggingSettings(BaseSettings):
@@ -244,8 +239,7 @@ class LoggingSettings(BaseSettings):
             raise ValueError(f"Log format must be one of {valid_formats}")
         return v
     
-    class Config:
-        env_prefix = "LOG_"
+    model_config = ConfigDict(env_prefix="LOG_")
 
 
 class ProcessingSettings(BaseSettings):
@@ -286,8 +280,7 @@ class ProcessingSettings(BaseSettings):
         description="Enable Speaker Diarization"
     )
     
-    class Config:
-        env_prefix = "PROCESSING_"
+    model_config = ConfigDict(env_prefix="PROCESSING_")
 
 
 class Settings(BaseSettings):
@@ -405,7 +398,6 @@ class Settings(BaseSettings):
         return config
     
     class Config:
-        env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
         
